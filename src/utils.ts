@@ -285,6 +285,10 @@ export class Vector2 {
   mul(i: number): Vector2 {
     return new Vector2(this.x * i, this.y * i);
   }
+
+  toString() {
+    return `${this.x}x${this.y}`;
+  }
 }
 
 /**

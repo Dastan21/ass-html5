@@ -55,6 +55,7 @@ export type StyleDescriptor = {
   opacity: number;
   textAlign: Align;
   textBaseline: Baseline;
+  rotationOrigin?: Vector2;
 };
 
 export type Layer = {

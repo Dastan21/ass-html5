@@ -451,8 +451,9 @@ export class Renderer {
         cY = actualPosition.y;
       }
 
-      if (d.rotationOrigin)
+      if (d.rotationOrigin) {
         rotationOrigin = new Vector2(d.rotationOrigin.x * Xratio, d.rotationOrigin.y * Yratio);
+      }
 
       if (d.fade) {
         switch (d.fade.type) {
@@ -631,12 +632,20 @@ export class Renderer {
         }
       }
 
+      layer.ctx.save();
+      words.forEach((word) => {
+        this.applyCustomAnimations(word.font, d.start, time);
+      });
+
       words.forEach((word) => {
         word.font.opacity = currentOpacity;
         layer.ctx.save();
+        word.font.rotationOrigin = rotationOrigin;
         this.drawWord(word, time, d.start, layer);
         layer.ctx.restore();
       });
+
+      layer.ctx.restore();
     }
   }
 
@@ -644,21 +653,19 @@ export class Renderer {
     return stringHash(JSON.stringify(font));
   }
 
-  drawWord(word: Word, time: number, startTime: number, layer: Layer, debug = false) {
-    let str = chunkCharToString(word.value);
-    for (let i = 0; i < word.font.customAnimations.length; i++) {
-      const ca = word.font.customAnimations[i] as CustomAnimation;
+  applyCustomAnimations(font: StyleDescriptor, startTime: number, time: number) {
+    for (let i = 0; i < font.customAnimations.length; i++) {
+      const ca = font.customAnimations[i] as CustomAnimation;
       if (startTime * 1000 + ca.t1 <= time * 1000 && time * 1000 <= startTime * 1000 + ca.t2) {
         const end = startTime * 1000 + ca.t2;
         const start = startTime * 1000 + ca.t1;
         const t = (time * 1000 - start) / (end - start);
-
         for (const field in ca.tag) {
           switch (field) {
             case 'a1':
             case 'a3':
             case 'a4':
-              word.font.colors[field] = lerp(
+              font.colors[field] = lerp(
                 255,
                 Math.abs(parseAlpha(ca.tag[field] as string) - 255),
                 t
@@ -669,7 +676,7 @@ export class Renderer {
             case 'yshad':
             case 'xbord':
             case 'ybord':
-              word.font[field] = lerp(0, ca.tag[field] as number, t);
+              font[field] = lerp(0, ca.tag[field] as number, t);
               break;
             case 'fax':
             case 'fay':
@@ -678,17 +685,17 @@ export class Renderer {
             case 'frz':
             case 'fscx':
             case 'fscy':
-              word.font.t[field] = lerp(0, ca.tag[field] as number, t);
+              font.t[field] = lerp(0, ca.tag[field] as number, t);
               break;
             case 'fs':
-              word.font.fontsize = this.upscale(
+              font.fontsize = this.upscale(
                 lerp(0, ca.tag[field] as number, t),
                 this.playerResY,
                 this.layers[0]?.canvas.height || 0
               );
               break;
             case 'fsp':
-              word.font.t.fsp = this.upscale(
+              font.t.fsp = this.upscale(
                 lerp(0, ca.tag[field] as number, t),
                 this.playerResX,
                 this.layers[0]?.canvas.width || this.playerResX
@@ -700,9 +707,24 @@ export class Renderer {
         }
       }
     }
+  }
 
+  drawWord(word: Word, time: number, startTime: number, layer: Layer, debug = false) {
+    let str = chunkCharToString(word.value);
     this.applyFont(word.font, layer);
-    const wordHead = word.value[0] as Char;
+    const wordHead = word.value[0] as Extract<Char, { kind: CHARKIND.NORMAL }>;
+    let metrics = layer.ctx.measureText(str);
+    const height = metrics.actualBoundingBoxAscent + metrics.fontBoundingBoxDescent;
+
+    const startX = wordHead.pos.x;
+    const startY = wordHead.pos.y;
+    if (word.font.t.frz !== 0) {
+      let org = word.font.rotationOrigin ?? new Vector2(startX, startY);
+      console.log(word.font.t.frz, word.font.rotationOrigin, org.toString());
+      layer.ctx.translate(org.x, org.y);
+      layer.ctx.rotate((Math.PI / 180) * -word.font.t.frz);
+      layer.ctx.translate(-org.x, -org.y);
+    }
 
     if (wordHead.kind === CHARKIND.NORMAL) {
       if (word.font.borderStyle !== 3) {
@@ -710,8 +732,6 @@ export class Renderer {
           layer.ctx.strokeText(str, wordHead.pos.x, wordHead.pos.y);
         }
       }
-
-      let metrics = layer.ctx.measureText(str);
 
       layer.ctx.fillText(str, wordHead.pos.x, wordHead.pos.y);
 
@@ -727,12 +747,7 @@ export class Renderer {
       }
 
       if (word.font.borderStyle === 3) {
-        this.drawTextBackground(
-          wordHead.pos,
-          metrics.actualBoundingBoxAscent + metrics.fontBoundingBoxDescent,
-          metrics.width,
-          word.font
-        );
+        this.drawTextBackground(wordHead.pos, height, metrics.width, word.font);
       }
     }
   }
